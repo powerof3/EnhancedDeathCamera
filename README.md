@@ -36,7 +36,7 @@ cmake --build build --config Release
 ### AE
 ```
 cmake --preset vs2022-windows-ae
-cmake --build buildvr --config Release
+cmake --build buildae --config Release
 
 ## License
 [MIT](LICENSE)
