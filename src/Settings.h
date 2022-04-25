@@ -51,8 +51,9 @@ public:
 	{}
 
 	virtual ~Camera() = default;
-	virtual void LoadSettings(CSimpleIniA& a_ini);
+	virtual void LoadSettings(CSimpleIniA& a_ini, bool a_writeComments);
 
+	// members
 	TYPE type;
 	std::string typeStr;
 
@@ -65,10 +66,10 @@ public:
 	float timeMult{ 0.8f };
 	float timeMultPC{ 0.8f };
 
-	// 0 - free rotation, 1 - animator cam, 2 - locked
+    // 0 - free rotation, 1 - animator cam, 2 - locked
 	TPS thirdPersonStateType;
 
-	bool improvedCamCompability{ false };
+    bool improvedCamCompability{ false };
 };
 
 class RagdollCamera final : public Camera
@@ -86,7 +87,7 @@ public:
 		Camera(TYPE::kDeath, "Death Camera", a_camType, a_tpsType)
 	{}
 
-	void LoadSettings(CSimpleIniA& a_ini) override;
+	void LoadSettings(CSimpleIniA& a_ini, bool a_writeComments) override;
 
 	bool moveCamToKiller{ false };
 	bool setWhenDead{ true };
