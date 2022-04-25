@@ -1,397 +1,328 @@
-﻿#include "version.h"
+#include "Settings.h"
 
-namespace GLOBALS
+struct detail
 {
-	namespace DEATH
+	static void SetHudMode(const char* a_mode, bool a_enable)
 	{
-		bool enableCam = true;
-		bool hideUI = true;
-
-		// 0 - third, 1 - ufo
-		std::uint32_t camType = 0;
-
-		float timeMult = 0.8f;
-		float timeMultPC = 0.8f;
-
-		// 0 - free rotation, 1 - animator cam, 2 - locked
-		std::uint32_t tpsType = 1;
-
-		bool moveCamToKiller = true;
-		bool setWhenDead = true;
-
-		float camDuration = 5.0f;
-
-		RE::ACTOR_LIFE_STATE deadState = RE::ACTOR_LIFE_STATE::kDead;
-	}
-
-	namespace RAGDOLL
-	{
-		bool enableCam = true;
-		bool hideUI = true;
-
-		std::uint32_t camType = 0;
-
-		float timeMult = 0.8f;
-		float timeMultPC = 0.8f;
-
-		std::uint32_t tpsType = 2;
-	}
-
-	namespace IMPROVED_CAM
-	{
-		bool installed = false;
-		bool fpDeath = false;
-		bool fpRagdoll = false;
-	}
-
-	bool altTPSMode = false;
-}
-
-
-namespace PATCH
-{
-	void BlockInputWhenKnockedOut()	 //nops out "player->IsKnockedOut()"
-	{
-		constexpr std::uint8_t NOP = 0x90;
-
-		REL::Relocation<std::uintptr_t> CanAcceptInputs{ REL::ID(41288) };
-		REL::safe_write(CanAcceptInputs.address() + 0xF2, NOP);
-		REL::safe_write(CanAcceptInputs.address() + 0xF3, NOP);
-	}
-
-	void ActionGetUp()	//camera->state[bleedout] to camera->state[thirdperson/free]
-	{
-		struct Patch : Xbyak::CodeGenerator
-		{
-			Patch()
-			{
-				mov(rax, ptr[rcx + (GLOBALS::RAGDOLL::camType == 0 ? 0x100 : 0xD0)]);
-			}
-		};
-
-		Patch patch;
-		patch.ready();
-
-		REL::Relocation<std::uintptr_t> ActionGetUp{ REL::ID(39086) };
-		REL::safe_write(ActionGetUp.address() + 0xC7, stl::span{ patch.getCode(), patch.getSize() });
-	}
-}
-
-
-namespace CAMERA
-{
-	using namespace GLOBALS;
-
-	void SetCameraMode(const char* a_mode, bool a_enable)
-	{
-		using func_t = decltype(&SetCameraMode);
-		REL::Relocation<func_t> func{ REL::ID(50747) };
+		using func_t = decltype(&SetHudMode);
+		REL::Relocation<func_t> func{ RELOCATION_ID(50747, 51642) };
 		return func(a_mode, a_enable);
 	}
 
-	bool SetCamera(RE::PlayerCamera* a_camera, bool a_IC_FP, std::uint32_t a_camType, bool a_hideUI, float a_timeMult, float a_timeMultPC, std::uint32_t a_tpsType)
+	static RE::ThirdPersonState* GetThirdPersonState(const RE::PlayerCamera* a_camera)
 	{
-		auto currState = a_camera->currentState.get();
-		if (currState) {
-			if (currState->id == RE::CameraState::kFirstPerson) {
-				if (IMPROVED_CAM::installed && a_IC_FP || altTPSMode) {
-					return false;
-				} else {
-					a_camera->EnterThirdPerson();
-				}
-			} else {
-				switch (a_camType) {
-				case 0:
-					{
-						if (IMPROVED_CAM::installed && a_IC_FP || altTPSMode) {
-							return false;
-						}
+		return a_camera->IsInThirdPerson() ? static_cast<RE::ThirdPersonState*>(a_camera->currentState.get()) : nullptr;
+	}
 
-						a_camera->EnterThirdPerson();
-						if (IMPROVED_CAM::installed) {
-							auto controlMap = RE::ControlMap::GetSingleton();
-							if (controlMap) {
-								controlMap->ToggleControls(RE::ControlMap::UEFlag::kPOVSwitch, false);
-							}
-						}
+	static void TogglePOVSwitchOff()
+	{
+		if (Settings::GetSingleton()->GetUseImprovedCam()) {
+			if (const auto controlMap = RE::ControlMap::GetSingleton()) {
+				controlMap->ToggleControls(RE::ControlMap::UEFlag::kPOVSwitch, false);
+			}
+		}
+	}
+};
+
+namespace util
+{
+	bool SetCamera(RE::PlayerCamera* a_playerCamera, const Camera* a_camSettings)
+	{
+		const auto settings = Settings::GetSingleton();
+
+		if (a_playerCamera->IsInFirstPerson()) {
+			if (a_camSettings->improvedCamCompability || settings->UseAltThirdPersonCam()) {
+				return false;
+			}
+            a_playerCamera->ForceThirdPerson();
+        } else {
+			switch (a_camSettings->camType) {
+			case Camera::CAM::kThird:
+				{
+					if (a_camSettings->improvedCamCompability || settings->UseAltThirdPersonCam()) {
+						return false;
 					}
-					break;
-				case 1:
-					a_camera->EnterFreeCameraState(false);
-					break;
-				default:
-					break;
+
+					a_playerCamera->ForceThirdPerson();
+
+					detail::TogglePOVSwitchOff();
 				}
+				break;
+			case Camera::CAM::kUFO:
+				a_playerCamera->ToggleFreeCameraMode(false);
+				break;
+			default:
+				break;
 			}
 		}
 
-		SetCameraMode("VATSPlayback", a_hideUI);
+		detail::SetHudMode("VATSPlayback", a_camSettings->hideUI);
 
-		auto VATS = RE::VATSManager::GetSingleton();
-		if (VATS) {
-			VATS->SetGameTimeMult(a_timeMult, a_timeMultPC);
+		if (const auto VATS = RE::VATS::GetSingleton()) {
+			VATS->SetMagicTimeSlowdown(a_camSettings->timeMult, a_camSettings->timeMultPC);
 		}
 
-		if (currState = a_camera->currentState.get(); currState && currState->id == RE::CameraState::kThirdPerson) {
-			auto tps = static_cast<RE::ThirdPersonState*>(currState);
-			if (tps) {
-				switch (a_tpsType) {
-				case 0:
-					tps->freeRotationEnabled = true;
-					break;
-				case 1:
-					tps->toggleAnimCam = true;
-					break;
-				case 2:
-					{
-						tps->freeRotationEnabled = false;
-						tps->toggleAnimCam = false;
-					}
-					break;
-				default:
-					break;
+		if (const auto tps = detail::GetThirdPersonState(a_playerCamera)) {
+			switch (a_camSettings->thirdPersonStateType) {
+			case Camera::TPS::kFreeRotation:
+				tps->freeRotationEnabled = true;
+				break;
+			case Camera::TPS::kAnimatorCam:
+				tps->toggleAnimCam = true;
+				break;
+			case Camera::TPS::kLocked:
+				{
+					tps->freeRotationEnabled = false;
+					tps->toggleAnimCam = false;
 				}
+				break;
+			default:
+				break;
 			}
 		}
 
 		return true;
 	}
+}
 
-
-	class Death
+namespace DEATH
+{
+	struct UpdateWhenAIControlledOrDead
 	{
-	public:
-		static void Hook()
+		static void thunk(RE::PlayerCharacter* a_player, float a_delta)
 		{
-			auto& trampoline = SKSE::GetTrampoline();
-
-			REL::Relocation<std::uintptr_t> KillImpl{ REL::ID(36872) };	 //death
-			_SetBleedoutCamera_Death = trampoline.write_call<5>(KillImpl.address() + 0x107E, SetBleedoutCamera_Death);
-
-			REL::Relocation<std::uintptr_t> SetLifeState{ REL::ID(36604) };	 //bleedout
-			_SetBleedoutCamera_Bleedout = trampoline.write_call<5>(SetLifeState.address() + 0x47F, SetBleedoutCamera_Bleedout);
-
-			if (!altTPSMode && DEATH::moveCamToKiller) {
-				REL::Relocation<std::uintptr_t> PlayerCharacterUpdate{ REL::ID(39375) };
-				_UpdatePlayerDeath = trampoline.write_call<5>(PlayerCharacterUpdate.address() + 0xCE, UpdatePlayerDeath);
-			}
-		}
-
-	private:
-		static void SetBleedoutCamera_Death(RE::PlayerCamera* a_camera)
-		{
-			if (!SetCamera(a_camera, IMPROVED_CAM::fpDeath, DEATH::camType, DEATH::hideUI, DEATH::timeMult, DEATH::timeMultPC, DEATH::tpsType)) {
-				return _SetBleedoutCamera_Death(a_camera);
-			}
-		}
-		static inline REL::Relocation<decltype(SetBleedoutCamera_Death)> _SetBleedoutCamera_Death;
-
-		static void SetBleedoutCamera_Bleedout(RE::PlayerCamera* a_camera)
-		{
-			if (!SetCamera(a_camera, IMPROVED_CAM::fpDeath, DEATH::camType, DEATH::hideUI, DEATH::timeMult, DEATH::timeMultPC, DEATH::tpsType)) {
-				return _SetBleedoutCamera_Bleedout(a_camera);
-			}
-		}
-		static inline REL::Relocation<decltype(SetBleedoutCamera_Bleedout)> _SetBleedoutCamera_Bleedout;
-
-		static void UpdatePlayerDeath(RE::PlayerCharacter* a_player)
-		{
-			if (a_player->GetLifeState() == DEATH::deadState) {
-				auto killer = a_player->GetKiller();
-				if (killer && !killer->IsDead()) {
-					auto camera = RE::PlayerCamera::GetSingleton();
-					if (camera && camera->cameraTarget != a_player->myKiller) {
-						auto tps = static_cast<RE::ThirdPersonState*>(camera->currentState.get());
-						if (tps) {
+			if (a_player->GetLifeState() == Settings::GetSingleton()->GetDeadState()) {
+				if (const auto killer = a_player->GetKiller(); !killer->IsDead()) {
+					if (const auto camera = RE::PlayerCamera::GetSingleton(); camera->cameraTarget != a_player->myKiller) {
+						if (const auto tps = detail::GetThirdPersonState(camera)) {
 							camera->cameraTarget = a_player->myKiller;
 							tps->toggleAnimCam = true;
 						} else {
-							camera->EnterThirdPerson();
+							camera->ForceThirdPerson();
 						}
 					}
 				}
 			}
 
-			_UpdatePlayerDeath(a_player);
+			func(a_player, a_delta);
 		}
-		static inline REL::Relocation<decltype(UpdatePlayerDeath)> _UpdatePlayerDeath;
-	};
+		static inline REL::Relocation<decltype(thunk)> func;
 
-
-	class Ragdoll
-	{
-	public:
-		static void Hook()
+		static void Install()
 		{
-			auto& trampoline = SKSE::GetTrampoline();
-
-			REL::Relocation<std::uintptr_t> DoActionKnockdown{ REL::ID(39087) };
-			_SetBleedoutCamera_Ragdoll = trampoline.write_call<5>(DoActionKnockdown.address() + 0xC7, SetBleedoutCamera_Ragdoll);
-
-			if (!altTPSMode || RAGDOLL::camType == 1) {
-				REL::Relocation<std::uintptr_t> StartActionGetUp{ REL::ID(39086) };
-				_SetGameTimeMult = trampoline.write_call<5>(StartActionGetUp.address() + 0xE1, SetGameTimeMult);
-			}
-
-			if (RAGDOLL::camType == 1) {								  //UpdateKnockdownState/PlayerUpdate does not get called with flycam? might affect other game systems if patched
-																		  //normally called in AnimUpdate for npcs but not for the player
-				REL::Relocation<std::uintptr_t> vtbl{ REL::ID(261916) };  //player vtbl
-				_UpdateAnim = vtbl.write_vfunc(0x07D, UpdateAnim);
-			}
-		}
-
-	private:
-		static void SetBleedoutCamera_Ragdoll(RE::PlayerCamera* a_camera)
-		{
-			if (!SetCamera(a_camera, IMPROVED_CAM::fpRagdoll, RAGDOLL::camType, RAGDOLL::hideUI, RAGDOLL::timeMult, RAGDOLL::timeMultPC, RAGDOLL::tpsType)) {
-				return _SetBleedoutCamera_Ragdoll(a_camera);
-			}
-		}
-		static inline REL::Relocation<decltype(SetBleedoutCamera_Ragdoll)> _SetBleedoutCamera_Ragdoll;
-
-		static void SetGameTimeMult(RE::VATSManager* a_vats, float a_npcMult, float a_pcMult)
-		{
-			if (auto camera = RE::PlayerCamera::GetSingleton(); camera) {
-				if (auto currState = camera->currentState.get(); currState) {
-					if (currState->id == RE::CameraState::kThirdPerson) {
-						auto tps = static_cast<RE::ThirdPersonState*>(currState);
-						if (tps) {
-							tps->toggleAnimCam = false;
-						}
-					} else {
-						camera->EnterThirdPerson();
-					}
-				}
-			}
-
-			if (IMPROVED_CAM::installed) {
-				auto controlMap = RE::ControlMap::GetSingleton();
-				if (controlMap) {
-					controlMap->ToggleControls(RE::ControlMap::UEFlag::kPOVSwitch, true);
-				}
-			}
-
-			SetCameraMode("VATSPlayback", false);
-			
-			_SetGameTimeMult(a_vats, a_npcMult, a_pcMult);
-		}
-		static inline REL::Relocation<decltype(SetGameTimeMult)> _SetGameTimeMult;
-
-		static void UpdateAnim(RE::PlayerCharacter* a_player, float a_delta)
-		{
-			_UpdateAnim(a_player, a_delta);
-
-			auto camera = RE::PlayerCamera::GetSingleton();
-			if (camera && camera->currentState.get() == camera->cameraStates[RE::CameraState::kFree].get()) {
-				auto process = a_player->currentProcess;
-				if (process) {
-					UpdateKnockDownState(process, a_player);
-				}
-			}
-		}
-		using UpdateAnimation_t = decltype(&RE::PlayerCharacter::UpdateAnimation);	// 07D
-		static inline REL::Relocation<UpdateAnimation_t> _UpdateAnim;
-
-		static void UpdateKnockDownState(RE::AIProcess* a_process, RE::Actor* a_actor)
-		{
-			using func_t = decltype(&UpdateKnockDownState);
-			REL::Relocation<func_t> func{ REL::ID(38859) };
-			return func(a_process, a_actor);
+			REL::Relocation<std::uintptr_t> target{ RELOCATION_ID(39375, 40447), OFFSET(0xDC5, 0x1477) };  //PlayerCharacter::Update
+			stl::write_thunk_call<UpdateWhenAIControlledOrDead>(target.address());
 		}
 	};
 
-
-	class Bleedout
+	struct StartBleedoutMode
 	{
-	public:
-		static void Hook()
+		static void thunk(RE::PlayerCamera* a_camera)
 		{
-			REL::Relocation<std::uintptr_t> vtbl{ REL::ID(267819) };  //bleedout camera
-			_BeginBleedout = vtbl.write_vfunc(0x01, BeginBleedout);
-			_EndBleedout = vtbl.write_vfunc(0x02, EndBleedout);
-			_UpdateBleedout = vtbl.write_vfunc(0x03, UpdateBleedout);
+			if (!util::SetCamera(a_camera, Settings::GetSingleton()->GetDeathCamera())) {
+				return func(a_camera);
+			}
 		}
+		static inline REL::Relocation<decltype(thunk)> func;
+
+		static void Install()
+		{
+			std::array targets{
+				std::make_pair(RELOCATION_ID(36872, 37896), OFFSET(0x107E, 0x1122)),  // Actor::KillImpl (Death)
+				std::make_pair(RELOCATION_ID(36604, 37612), OFFSET(0x47F, 0x408))     // Actor::SetLifeState (Bleedout)
+			};
+
+			for (const auto& [id, offset] : targets) {
+				REL::Relocation<std::uintptr_t> target{ id, offset };
+				stl::write_thunk_call<StartBleedoutMode>(target.address());
+			}
+		}
+	};
+
+	void Install()
+	{
+		StartBleedoutMode::Install();
+
+		if (const auto settings = Settings::GetSingleton(); !settings->UseAltThirdPersonCam() && settings->GetDeathCamera()->moveCamToKiller) {
+			UpdateWhenAIControlledOrDead::Install();
+		}
+	}
+}
+
+namespace RAGDOLL
+{
+	struct SetMagicTimeSlowdown
+	{
+		static void thunk(RE::VATS* a_vats, float a_magicTimeSlowdown, float a_playerMagicTimeSlowdown)
+		{
+			if (const auto camera = RE::PlayerCamera::GetSingleton()) {
+				if (const auto tps = detail::GetThirdPersonState(camera)) {
+					tps->toggleAnimCam = false;
+				} else {
+					camera->ForceThirdPerson();
+				}
+			}
+
+			detail::TogglePOVSwitchOff();
+			detail::SetHudMode("VATSPlayback", false);
+
+			func(a_vats, a_magicTimeSlowdown, a_playerMagicTimeSlowdown);
+		}
+		static inline REL::Relocation<decltype(thunk)> func;
+
+		static void Install()
+		{
+			REL::Relocation<std::uintptr_t> target{ RELOCATION_ID(39086, 40150), OFFSET(0xE1, 0x42C) };  //Actor::DoGetUpAction, inlined into Actor::DoGetUp in AE
+			stl::write_thunk_call<SetMagicTimeSlowdown>(target.address());
+		}
+	};
+
+	//UpdateKnockdownState/PlayerUpdate does not get called with flycam? might affect other game systems if patched
+	//normally called in AnimUpdate for npcs but not for the player
+	struct UpdateAnimation
+	{
+		static void thunk(RE::PlayerCharacter* a_player, float a_delta)
+		{
+			func(a_player, a_delta);
+
+			if (const auto camera = RE::PlayerCamera::GetSingleton(); camera->IsInFreeCameraMode()) {
+				if (const auto process = a_player->currentProcess) {
+					UpdateKnockState(process, a_player);
+				}
+			}
+		}
+		static inline REL::Relocation<decltype(thunk)> func;
+		static inline size_t index = 0x07D;
 
 	private:
-		static void BeginBleedout(RE::BleedoutCameraState* a_state)
+		static void UpdateKnockState(RE::AIProcess* a_process, RE::Actor* a_actor)
+		{
+			using func_t = decltype(&UpdateKnockState);
+			REL::Relocation<func_t> function{ RELOCATION_ID(38859, 39896) };
+			return function(a_process, a_actor);
+		}
+	};
+
+	struct StartBleedoutMode
+	{
+		static void thunk(RE::PlayerCamera* a_camera)
+		{
+			if (!util::SetCamera(a_camera, Settings::GetSingleton()->GetRagdollCamera())) {
+				return func(a_camera);
+			}
+		}
+		static inline REL::Relocation<decltype(thunk)> func;
+
+		static void Install()
+		{
+			REL::Relocation<std::uintptr_t> target{ RELOCATION_ID(39087, 40151), OFFSET(0xC7, 0x86) };  //DoKnockAction
+			stl::write_thunk_call<StartBleedoutMode>(target.address());
+		}
+	};
+
+	void Install()
+	{
+		StartBleedoutMode::Install();
+
+		const auto settings = Settings::GetSingleton();
+
+		if (!settings->UseAltThirdPersonCam() || settings->GetRagdollCamera()->camType == Camera::CAM::kUFO) {
+			SetMagicTimeSlowdown::Install();
+		}
+
+		if (settings->GetRagdollCamera()->camType == Camera::CAM::kUFO) {
+			stl::write_vfunc<RE::PlayerCharacter, UpdateAnimation>();
+		}
+	}
+}
+
+namespace BLEEDOUT
+{
+	struct Begin
+	{
+		static void thunk(RE::BleedoutCameraState* a_state)
 		{
 			BeginTPS(a_state);
 
-			auto player = RE::PlayerCharacter::GetSingleton();
-			if (player && player->IsDead()) {
-				SetCameraMode("VATSPlayback", DEATH::hideUI);
+			if (const auto player = RE::PlayerCharacter::GetSingleton()) {
+				const Camera* cam;
+			    if (player->IsDead()) {
+					cam = Settings::GetSingleton()->GetDeathCamera();
+			    } else {
+					cam = Settings::GetSingleton()->GetRagdollCamera();
+			    }
 
-				auto VATS = RE::VATSManager::GetSingleton();
-				if (VATS) {
-					VATS->SetGameTimeMult(DEATH::timeMult, DEATH::timeMultPC);
+				detail::SetHudMode("VATSPlayback", cam->hideUI);
+
+				if (const auto VATS = RE::VATS::GetSingleton()) {
+					VATS->SetMagicTimeSlowdown(cam->timeMult, cam->timeMultPC);
 				}
 
-				switch (DEATH::tpsType) {
-				case 0:
+				switch (cam->thirdPersonStateType) {
+				case Camera::TPS::kFreeRotation:
 					a_state->freeRotationEnabled = true;
 					break;
-				case 1:
+				case Camera::TPS::kAnimatorCam:
 					a_state->toggleAnimCam = true;
 					break;
-				case 2:
+				case Camera::TPS::kLocked:
 					{
-						a_state->freeRotationEnabled = false;
-						a_state->toggleAnimCam = false;
+						if (cam->type == Camera::TYPE::kDeath) {
+							a_state->freeRotationEnabled = false;
+							a_state->toggleAnimCam = false;
+						} else {
+							a_state->stateNotActive = true;
+						}
 					}
 					break;
 				default:
 					break;
 				}
-			} else {
-				SetCameraMode("VATSPlayback", RAGDOLL::hideUI);
-
-				auto VATS = RE::VATSManager::GetSingleton();
-				if (VATS) {
-					VATS->SetGameTimeMult(RAGDOLL::timeMult, RAGDOLL::timeMultPC);
-				}
-
-				switch (RAGDOLL::tpsType) {
-				case 0:
-					a_state->freeRotationEnabled = true;
-					break;
-				case 1:
-					a_state->toggleAnimCam = true;
-					break;
-				case 2:
-					a_state->stateNotActive = true;
-					break;
-				default:
-					break;
-				}
 			}
 		}
-		using BeginBleedout_t = decltype(&RE::BleedoutCameraState::Begin);	// 01
-		static inline REL::Relocation<BeginBleedout_t> _BeginBleedout;
+		[[maybe_unused]] static inline REL::Relocation<decltype(thunk)> func;
+		static inline size_t index = 0x1;
 
+	private:
+		static void BeginTPS(RE::ThirdPersonState* a_state)
+		{
+			using func_t = decltype(&BeginTPS);
+			REL::Relocation<func_t> function{ RELOCATION_ID(49958, 50894) };
+			return function(a_state);
+		}
+	};
 
-		static void EndBleedout(RE::BleedoutCameraState* a_state)
+	struct End
+	{
+		static void thunk(RE::BleedoutCameraState* a_state)
 		{
 			EndTPS(a_state);
 
-			SetCameraMode("VATSPlayback", false);
-			auto VATS = RE::VATSManager::GetSingleton();
-			if (VATS) {
-				VATS->SetGameTimeMult(0.0f, 0.0f);
+			detail::SetHudMode("VATSPlayback", false);
+			if (const auto VATS = RE::VATS::GetSingleton()) {
+				VATS->SetMagicTimeSlowdown(0.0f, 0.0f);
 			}
 		}
-		using EndBleedout_t = decltype(&RE::BleedoutCameraState::End);	// 01
-		static inline REL::Relocation<EndBleedout_t> _EndBleedout;
+		[[maybe_unused]] static inline REL::Relocation<decltype(thunk)> func;
+		static inline size_t index = 0x2;
 
-
-		static void UpdateBleedout(RE::BleedoutCameraState* a_state, RE::BSTSmartPointer<RE::TESCameraState>& a_nextState)
+	private:
+		static void EndTPS(RE::ThirdPersonState* a_state)
 		{
-			if (DEATH::moveCamToKiller) {
-				auto player = RE::PlayerCharacter::GetSingleton();
-				if (player && player->GetLifeState() == DEATH::deadState) {
-					auto killer = player->GetKiller();
-					if (killer && !killer->IsDead()) {
-						auto camera = RE::PlayerCamera::GetSingleton();
-						if (camera && camera->cameraTarget != player->myKiller) {
+			using func_t = decltype(&EndTPS);
+			REL::Relocation<func_t> function{ RELOCATION_ID(49959, 50895) };
+			return function(a_state);
+		}
+	};
+
+	struct Update
+	{
+		static void thunk(RE::BleedoutCameraState* a_state, RE::BSTSmartPointer<RE::TESCameraState>& a_nextState)
+		{
+			if (const auto settings = Settings::GetSingleton(); settings->GetDeathCamera()->moveCamToKiller) {
+				if (const auto player = RE::PlayerCharacter::GetSingleton(); player->GetLifeState() == settings->GetDeadState()) {
+					if (const auto killer = player->GetKiller(); killer && !killer->IsDead()) {
+						if (const auto camera = RE::PlayerCamera::GetSingleton(); camera && camera->cameraTarget != player->myKiller) {
 							camera->cameraTarget = player->myKiller;
 						}
 					}
@@ -400,162 +331,100 @@ namespace CAMERA
 
 			UpdateTPS(a_state, a_nextState);
 		}
-		using UpdateBleedoutation_t = decltype(&RE::BleedoutCameraState::Update);  // 03
-		static inline REL::Relocation<UpdateBleedoutation_t> _UpdateBleedout;
+		[[maybe_unused]] static inline REL::Relocation<decltype(thunk)> func;
+		static inline size_t index = 0x3;
 
-
-		static void BeginTPS(RE::ThirdPersonState* a_state)
-		{
-			using func_t = decltype(&BeginTPS);
-			REL::Relocation<func_t> func{ REL::ID(49958) };
-			return func(a_state);
-		}
-
-		static void EndTPS(RE::ThirdPersonState* a_state)
-		{
-			using func_t = decltype(&EndTPS);
-			REL::Relocation<func_t> func{ REL::ID(49959) };
-			return func(a_state);
-		}
-
+	private:
 		static void UpdateTPS(RE::ThirdPersonState* a_state, RE::BSTSmartPointer<RE::TESCameraState>& a_nextState)
 		{
 			using func_t = decltype(&UpdateTPS);
-			REL::Relocation<func_t> func{ REL::ID(49960) };
-			return func(a_state, a_nextState);
+			REL::Relocation<func_t> function{ RELOCATION_ID(49960, 50896) };
+			return function(a_state, a_nextState);
 		}
 	};
-}
 
-
-namespace INI
-{
-	using namespace GLOBALS;
-
-	bool Read()
+	void Install()
 	{
-		static std::string pluginPath;
-		if (pluginPath.empty()) {
-			pluginPath = SKSE::GetPluginConfigPath("po3_EnhancedDeathCamera");
-		}
-
-		CSimpleIniA ini;
-		ini.SetUnicode();
-		ini.SetMultiKey();
-
-		auto rc = ini.LoadFile(pluginPath.c_str());
-		if (rc < 0) {
-			logger::error("Can't load 'po3_EnhancedDeathCamera.ini'");
-			return false;
-		}
-
-		altTPSMode = ini.GetBoolValue("Main", "Enable Third Person Alt Camera", false);
-
-		//death
-		DEATH::enableCam = ini.GetBoolValue("Death Camera", "Enable", true);
-		DEATH::camType = ini.GetLongValue("Death Camera", "Type", 0);
-		DEATH::hideUI = ini.GetBoolValue("Death Camera", "Hide UI", true);
-		DEATH::tpsType = ini.GetLongValue("Death Camera", "Rotation Type (third person)", 0);
-
-		DEATH::timeMult = static_cast<float>(ini.GetDoubleValue("Death Camera", "Time multiplier", 0.8));
-		DEATH::timeMultPC = static_cast<float>(ini.GetDoubleValue("Death Camera", "Time multiplier (Player)", 0.8));
-
-		DEATH::moveCamToKiller = ini.GetBoolValue("Death Camera", "Snap Camera To Killer", false);
-
-		DEATH::camDuration = static_cast<float>(ini.GetDoubleValue("Death Camera", "Camera Duration", 5.0));
-
-		DEATH::setWhenDead = ini.GetBoolValue("Death Camera", "Set when dead", true);
-		DEATH::deadState = DEATH::setWhenDead ? RE::ACTOR_LIFE_STATE::kDead : RE::ACTOR_LIFE_STATE::kDying;
-
-		//ragdoll
-		RAGDOLL::enableCam = ini.GetBoolValue("Ragdoll Camera", "Enable", true);
-		RAGDOLL::hideUI = ini.GetBoolValue("Ragdoll Camera", "Hide UI", true);
-		RAGDOLL::camType = ini.GetLongValue("Ragdoll Camera", "Type", 0);
-		RAGDOLL::tpsType = ini.GetLongValue("Ragdoll Camera", "Rotation Type (third person)", 2);
-
-		RAGDOLL::timeMult = static_cast<float>(ini.GetDoubleValue("Ragdoll Camera", "Time multiplier", 0.8));
-		RAGDOLL::timeMultPC = static_cast<float>(ini.GetDoubleValue("Ragdoll Camera", "Time multiplier (Player)", 0.8));
-
-		return true;
-	}
-
-
-	bool ReadImprovedCamera()
-	{
-		static std::string pluginPath;
-		if (pluginPath.empty()) {
-			pluginPath = SKSE::GetPluginConfigPath("ImprovedCamera");
-		}
-
-		CSimpleIniA ini;
-		ini.SetUnicode();
-		ini.SetMultiKey();
-
-		auto rc = ini.LoadFile(pluginPath.c_str());
-		if (rc < 0) {
-			logger::error("couldn't read Improved Camera INI");
-			return false;
-		}
-
-		IMPROVED_CAM::fpDeath = ini.GetBoolValue("Main", "bFirstPersonDeath", true);
-		logger::info("Improved Camera - FirstPersonOnDeath {}", IMPROVED_CAM::fpDeath ? "enabled" : "disabled");
-		IMPROVED_CAM::fpRagdoll = ini.GetBoolValue("Main", "bFirstPersonKnockout", true);
-		logger::info("Improved Camera - FirstPersonOnKnockout {}", IMPROVED_CAM::fpRagdoll ? "enabled" : "disabled");
-
-		return true;
+		stl::write_vfunc<RE::BleedoutCameraState, Begin>();
+		stl::write_vfunc<RE::BleedoutCameraState, End>();
+		stl::write_vfunc<RE::BleedoutCameraState, Update>();
 	}
 }
 
-
-void OnInit(SKSE::MessagingInterface::Message* a_msg)
+namespace PATCH
 {
-	using namespace GLOBALS;
+	void InputWhenKnockedOut()  //nops out "player->IsKnockedOut()", enable input during ragdoll
+	{
+		REL::Relocation<std::uintptr_t> target{ RELOCATION_ID(41288, 42338), OFFSET(0xF2, 0x171) };  //PlayerControls::ShouldProcessPlayerInput, inlined into PerformInputProcessing in AE
 
+#ifdef SKYRIM_AE
+		constexpr std::array<std::uint8_t, 6> nops{ 0x66, 0x0F, 0x1F, 0x44, 0x0, 0x0 };
+#else
+		constexpr std::array<std::uint8_t, 2> nops{ 0x66, 0x90 };
+#endif
+
+		REL::safe_write(target.address(), nops.data(), nops.size());
+	}
+
+	void DoGetUpAction()  //camera->state[bleedout] to camera->state[thirdperson/free]
+	{
+		const auto ragdollCamType = Settings::GetSingleton()->GetRagdollCamera()->camType;
+
+		struct Patch : Xbyak::CodeGenerator
+		{
+			explicit Patch(const bool a_useThirdPerson)
+			{
+				mov(rax, ptr[rcx + (a_useThirdPerson ? 0x100 : 0xD0)]);
+			}
+		};
+
+		Patch patch(ragdollCamType == Camera::CAM::kThird);
+		patch.ready();
+
+		REL::Relocation<std::uintptr_t> target{ RELOCATION_ID(39086, 40150), OFFSET(0xC7, 0x412) };  //Actor::DoGetUpAction, inlined into Actor::DoGetUp in AE
+		REL::safe_write(target.address(), std::span{ patch.getCode(), patch.getSize() });
+	}
+}
+
+void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
+{
 	switch (a_msg->type) {
 	case SKSE::MessagingInterface::kPostLoad:
 		{
-			IMPROVED_CAM::installed = GetModuleHandle("ImprovedCamera") != nullptr;
-			logger::info("Improved Camera {}", IMPROVED_CAM::installed ? "found" : "not found");
+			if (const auto settings = Settings::GetSingleton(); settings->LoadSettings()) {
+				SKSE::AllocTrampoline(72);
 
-			if (IMPROVED_CAM::installed) {
-				INI::ReadImprovedCamera();
-			}
+				PATCH::InputWhenKnockedOut();
 
-			if (GetModuleHandle("SmoothCam") != nullptr) {
-				altTPSMode = true;
-				logger::info("Smooth Camera found");
-			} else {
-				logger::info("Smooth Camera not found");
-			}
+				const auto deathCam = settings->GetDeathCamera();
+				const auto ragdollCam = settings->GetRagdollCamera();
 
+				const bool useAltTPS = settings->UseAltThirdPersonCam();
 
-			PATCH::BlockInputWhenKnockedOut();
-
-			if (altTPSMode && (DEATH::camType == 0 || RAGDOLL::camType == 0)) {
-				CAMERA::Bleedout::Hook();
-				logger::info("patching bleedout cam");
-			}
-
-			if (RAGDOLL::enableCam) {
-				if (!altTPSMode || RAGDOLL::camType == 1) {
-					PATCH::ActionGetUp();
+				if (useAltTPS && (deathCam->enableCam && deathCam->camType == Camera::CAM::kThird || ragdollCam->enableCam && ragdollCam->camType == Camera::CAM::kThird)) {
+					BLEEDOUT::Install();
+					logger::info("patching bleedout cam");
 				}
-				CAMERA::Ragdoll::Hook();
-				logger::info("patching ragdoll cam");
-			}
-			if (GLOBALS::DEATH::enableCam) {
-				CAMERA::Death::Hook();
-				logger::info("patching death cam");
+
+				if (ragdollCam->enableCam) {
+					if (!useAltTPS || ragdollCam->camType == Camera::CAM::kUFO) {
+						PATCH::DoGetUpAction();
+					}
+					RAGDOLL::Install();
+					logger::info("patching ragdoll cam");
+				}
+				if (deathCam->enableCam) {
+					DEATH::Install();
+					logger::info("patching death cam");
+				}
 			}
 		}
 		break;
 	case SKSE::MessagingInterface::kDataLoaded:
 		{
-			auto gameSettingCollection = RE::GameSettingCollection::GetSingleton();
-			if (gameSettingCollection) {
-				auto gameSetting = gameSettingCollection->GetSetting("fPlayerDeathReloadTime");
-				if (gameSetting) {
-					gameSetting->data.f = DEATH::camDuration;
+			if (const auto gameSettingCollection = RE::GameSettingCollection::GetSingleton()) {
+				if (const auto gameSetting = gameSettingCollection->GetSetting("fPlayerDeathReloadTime")) {
+					gameSetting->data.f = Settings::GetSingleton()->GetDeathCamera()->camDuration;
 				}
 			}
 		}
@@ -565,74 +434,70 @@ void OnInit(SKSE::MessagingInterface::Message* a_msg)
 	}
 }
 
+#ifdef SKYRIM_AE
+extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []() {
+	SKSE::PluginVersionData v;
+	v.PluginVersion(Version::MAJOR);
+	v.PluginName("Enhanced Death Cam");
+	v.AuthorName("powerofthree");
+	v.UsesAddressLibrary(true);
+	v.CompatibleVersions({ SKSE::RUNTIME_LATEST });
 
-extern "C" DLLEXPORT bool APIENTRY SKSEPlugin_Query(const SKSE::QueryInterface* a_skse, SKSE::PluginInfo* a_info)
-{
-	try {
-		auto path = logger::log_directory().value() / "po3_EnhancedDeathCam.log";
-		auto log = spdlog::basic_logger_mt("global log", path.string(), true);
-		log->flush_on(spdlog::level::info);
-
-#ifndef NDEBUG
-		log->set_level(spdlog::level::debug);
-		log->sinks().push_back(std::make_shared<spdlog::sinks::msvc_sink_mt>());
+	return v;
+}();
 #else
-		log->set_level(spdlog::level::info);
+extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Query(const SKSE::QueryInterface* a_skse, SKSE::PluginInfo* a_info)
+{
+	a_info->infoVersion = SKSE::PluginInfo::kVersion;
+	a_info->name = "Enhanced Death Cam";
+	a_info->version = Version::MAJOR;
 
-#endif
-		spdlog::set_default_logger(log);
-		spdlog::set_pattern("[%H:%M:%S] [%l] %v");
-
-		logger::info("Enhanced Death Cam {}", SOS_VERSION_VERSTRING);
-
-		a_info->infoVersion = SKSE::PluginInfo::kVersion;
-		a_info->name = "Enhanced Death Cam";
-		a_info->version = SOS_VERSION_MAJOR;
-
-		if (a_skse->IsEditor()) {
-			logger::critical("Loaded in editor, marking as incompatible");
-			return false;
-		}
-
-		const auto ver = a_skse->RuntimeVersion();
-		if (ver < SKSE::RUNTIME_1_5_39) {
-			logger::critical("Unsupported runtime version {}", ver.string());
-			return false;
-		}
-	} catch (const std::exception& e) {
-		logger::critical(e.what());
+	if (a_skse->IsEditor()) {
+		logger::critical("Loaded in editor, marking as incompatible"sv);
 		return false;
-	} catch (...) {
-		logger::critical("caught unknown exception");
+	}
+
+	const auto ver = a_skse->RuntimeVersion();
+	if (ver < SKSE::RUNTIME_1_5_39) {
+		logger::critical(FMT_STRING("Unsupported runtime version {}"), ver.string());
 		return false;
 	}
 
 	return true;
 }
+#endif
 
-
-extern "C" DLLEXPORT bool APIENTRY SKSEPlugin_Load(const SKSE::LoadInterface* a_skse)
+void InitializeLog()
 {
-	try {
-		logger::info("Enhanced Death Cam loaded");
-
-		SKSE::Init(a_skse);
-		SKSE::AllocTrampoline(72);
-
-		INI::Read();
-
-		auto messaging = SKSE::GetMessagingInterface();
-		if (!messaging->RegisterListener("SKSE", OnInit)) {
-			return false;
-		}
-
-	} catch (const std::exception& e) {
-		logger::critical(e.what());
-		return false;
-	} catch (...) {
-		logger::critical("caught unknown exception");
-		return false;
+	auto path = logger::log_directory();
+	if (!path) {
+		stl::report_and_fail("Failed to find standard logging directory"sv);
 	}
+
+	*path /= fmt::format(FMT_STRING("{}.log"), Version::PROJECT);
+	auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path->string(), true);
+
+	auto log = std::make_shared<spdlog::logger>("global log"s, std::move(sink));
+
+	log->set_level(spdlog::level::info);
+	log->flush_on(spdlog::level::info);
+
+	spdlog::set_default_logger(std::move(log));
+	spdlog::set_pattern("[%l] %v"s);
+
+	logger::info(FMT_STRING("{} v{}"), Version::PROJECT, Version::NAME);
+}
+
+extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_skse)
+{
+	InitializeLog();
+
+	logger::info("loaded");
+
+	SKSE::Init(a_skse);
+
+	const auto messaging = SKSE::GetMessagingInterface();
+	messaging->RegisterListener(MessageHandler);
 
 	return true;
 }
