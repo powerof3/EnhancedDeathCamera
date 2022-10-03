@@ -44,7 +44,7 @@
     },
     {
       "cacheVariables": {
-        "CMAKE_CXX_FLAGS": "/EHsc /MP /W4 /WX $penv{CXXFLAGS}"
+        "CMAKE_CXX_FLAGS": "/EHsc /MP /W4 /WX /external:W0 $penv{CXXFLAGS}"
       },
       "generator": "Visual Studio 17 2022",
       "inherits": [
@@ -52,13 +52,13 @@
         "vcpkg",
         "windows"
       ],
-      "name": "vs2022-windows-se",
+      "name": "vs2022-windows-vcpkg-se",
       "toolset": "v143"
     },
     {
       "binaryDir": "${sourceDir}/buildae",
       "cacheVariables": {
-        "CMAKE_CXX_FLAGS": "/EHsc /MP /W4 /WX $penv{CXXFLAGS}",
+        "CMAKE_CXX_FLAGS": "/EHsc /MP /W4 /WX /external:W0 $penv{CXXFLAGS}",
         "BUILD_SKYRIMAE": true
       },
       "generator": "Visual Studio 17 2022",
@@ -67,7 +67,7 @@
         "vcpkg",
         "windows"
       ],
-      "name": "vs2022-windows-ae",
+      "name": "vs2022-windows-vcpkg-ae",
       "toolset": "v143"
     }
   ],

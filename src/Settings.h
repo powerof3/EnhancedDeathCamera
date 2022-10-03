@@ -24,7 +24,7 @@ namespace INI
 class Camera
 {
 public:
-    enum class TYPE : std::uint32_t
+	enum class TYPE : std::uint32_t
 	{
 		kRagdoll = 0,
 		kDeath = 1
@@ -66,10 +66,10 @@ public:
 	float timeMult{ 0.8f };
 	float timeMultPC{ 0.8f };
 
-    // 0 - free rotation, 1 - animator cam, 2 - locked
+	// 0 - free rotation, 1 - animator cam, 2 - locked
 	TPS thirdPersonStateType;
 
-    bool improvedCamCompability{ false };
+	bool improvedCamCompability{ false };
 };
 
 class RagdollCamera final : public Camera
@@ -104,17 +104,22 @@ public:
 		return std::addressof(singleton);
 	}
 
-	[[nodiscard]] bool LoadSettings();
-
 	DeathCamera* GetDeathCamera();
 	RagdollCamera* GetRagdollCamera();
 
 	[[nodiscard]] RE::ACTOR_LIFE_STATE GetDeadState() const;
 
 	[[nodiscard]] bool GetUseImprovedCam() const;
-    [[nodiscard]] bool UseAltThirdPersonCam() const;
+	[[nodiscard]] bool UseAltThirdPersonCam() const;
 
 private:
+	Settings()
+	{
+		LoadSettings();
+	}
+
+	void LoadSettings();
+
 	void CheckImprovedCamera();
 	void CheckSmoothCam();
 
