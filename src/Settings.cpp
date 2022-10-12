@@ -22,12 +22,20 @@ void DeathCamera::LoadSettings(CSimpleIniA& a_ini, bool a_writeComments)
 
 void Settings::CheckImprovedCamera()
 {
-	improvedCamInstalled = GetModuleHandleA("ImprovedCamera") != nullptr;
+#ifdef SKYRIM_AE
+	improvedCamInstalled = GetModuleHandleA("ImprovedCameraAE") != nullptr;
+#else
+	improvedCamInstalled = GetModuleHandleA("ImprovedCameraSE") != nullptr;
+#endif
 	if (!improvedCamInstalled) {
 		return;
 	}
 
-	constexpr auto path = L"Data/SKSE/Plugins/ImprovedCamera.ini";
+#ifdef SKYRIM_AE
+	constexpr auto path = L"Data/SKSE/Plugins/ImprovedCameraAE/ImprovedCameraAE.ini";
+#else
+	constexpr auto path = L"Data/SKSE/Plugins/ImprovedCameraSE/ImprovedCameraSE.ini";
+#endif
 
 	CSimpleIniA ini;
 	ini.SetUnicode();
@@ -37,11 +45,11 @@ void Settings::CheckImprovedCamera()
 		return;
 	}
 
-	deathCam.improvedCamCompability = ini.GetBoolValue("Main", "bFirstPersonDeath", false);
-	ragdollCam.improvedCamCompability = ini.GetBoolValue("Main", "bFirstPersonKnockout", true);
+	deathCam.improvedCamCompability = ini.GetBoolValue("EVENTS", "bEventDeath", true);
+	ragdollCam.improvedCamCompability = ini.GetBoolValue("EVENTS", "bEventRagdoll", true);
 
-	logger::info("Improved Camera - FirstPersonOnDeath {}", deathCam.improvedCamCompability ? "enabled" : "disabled");
-	logger::info("Improved Camera - FirstPersonOnKnockout {}", ragdollCam.improvedCamCompability ? "enabled" : "disabled");
+	logger::info("Improved Camera - EventDeath {}", deathCam.improvedCamCompability ? "enabled" : "disabled");
+	logger::info("Improved Camera - EventRagdoll {}", ragdollCam.improvedCamCompability ? "enabled" : "disabled");
 }
 
 void Settings::CheckSmoothCam()
@@ -54,7 +62,7 @@ void Settings::CheckSmoothCam()
 	}
 }
 
-bool Settings::LoadSettings()
+void Settings::LoadSettings()
 {
 	constexpr auto path = L"Data/SKSE/Plugins/po3_EnhancedDeathCamera.ini";
 
@@ -72,8 +80,6 @@ bool Settings::LoadSettings()
 	CheckSmoothCam();
 
 	(void)ini.SaveFile(path);
-
-	return true;
 }
 
 DeathCamera* Settings::GetDeathCamera()
