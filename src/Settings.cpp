@@ -45,8 +45,8 @@ void Settings::CheckImprovedCamera()
 		return;
 	}
 
-	deathCam.improvedCamCompability = ini.GetBoolValue("EVENTS", "bEventDeath", true);
-	ragdollCam.improvedCamCompability = ini.GetBoolValue("EVENTS", "bEventRagdoll", true);
+	deathCam.improvedCamCompability = static_cast<bool>(ini.GetLongValue("EVENTS", "bEventDeath", 0));
+	ragdollCam.improvedCamCompability = static_cast<bool>(ini.GetLongValue("EVENTS", "bEventRagdoll", 0));
 
 	logger::info("Improved Camera - EventDeath {}", deathCam.improvedCamCompability ? "enabled" : "disabled");
 	logger::info("Improved Camera - EventRagdoll {}", ragdollCam.improvedCamCompability ? "enabled" : "disabled");

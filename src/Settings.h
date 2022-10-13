@@ -11,9 +11,12 @@ namespace INI
 		} else if constexpr (std::is_floating_point_v<T>) {
 			a_value = static_cast<float>(a_ini.GetDoubleValue(a_section, a_key, a_value));
 			a_ini.SetDoubleValue(a_section, a_key, a_value, a_comment);
-		} else if constexpr (std::is_enum_v<T> || std::is_arithmetic_v<T>) {
+		} else if constexpr (std::is_enum_v<T>) {
 			a_value = string::lexical_cast<T>(a_ini.GetValue(a_section, a_key, std::to_string(stl::to_underlying(a_value)).c_str()));
 			a_ini.SetValue(a_section, a_key, std::to_string(stl::to_underlying(a_value)).c_str(), a_comment);
+		} else if constexpr (std::is_arithmetic_v<T>) {
+			a_value = string::lexical_cast<T>(a_ini.GetValue(a_section, a_key, std::to_string(a_value).c_str()));
+			a_ini.SetValue(a_section, a_key, std::to_string(a_value).c_str(), a_comment);
 		} else {
 			a_value = a_ini.GetValue(a_section, a_key, a_value.c_str());
 			a_ini.SetValue(a_section, a_key, a_value.c_str(), a_comment);
@@ -92,7 +95,7 @@ public:
 	bool moveCamToKiller{ false };
 	bool setWhenDead{ true };
 
-	float camDuration{ 5.0f };
+	std::uint32_t camDuration{ 5 };
 };
 
 class Settings

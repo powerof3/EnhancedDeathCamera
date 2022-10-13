@@ -4,10 +4,10 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
 {
 	switch (a_msg->type) {
 	case SKSE::MessagingInterface::kPostLoad:
-		EnhancedDeathCamera::InstallOnPostLoad();
+		Hooks::InstallOnPostLoad();
 		break;
 	case SKSE::MessagingInterface::kDataLoaded:
-		EnhancedDeathCamera::InstallOnDataLoad();
+		Hooks::InstallOnDataLoad();
 		break;
 	default:
 		break;
