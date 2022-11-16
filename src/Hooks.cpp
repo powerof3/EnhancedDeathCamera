@@ -45,14 +45,16 @@ namespace Hooks
 						if (settings->UseAltThirdPersonCam()) {
 							return false;
 						}
-
-						a_playerCamera->ForceThirdPerson();
-						detail::TogglePOVSwitchOff();
+						TogglePOVSwitchOff();
 					}
 					break;
 				case Camera::CAM::kUFO:
 					{
 						a_playerCamera->ToggleFreeCameraMode(false);
+						if (a_camSettings->type == Camera::TYPE::kDeath) {
+							std::jthread t(ReloadLastSave);
+							t.detach();
+						}
 					}
 					break;
 				default:
@@ -87,7 +89,18 @@ namespace Hooks
 
 			return true;
 		}
-	}
+
+        void ReloadLastSave()
+		{
+			const auto camDuration = Settings::GetSingleton()->GetDeathCamera()->camDuration;
+			std::this_thread::sleep_for(std::chrono::seconds(camDuration));
+
+			RE::SubtitleManager::GetSingleton()->KillSubtitles();
+		    if (!RE::BGSSaveLoadManager::GetSingleton()->LoadMostRecentSaveGame()) {
+				RE::Main::GetSingleton()->resetGame = true;
+			}
+		}
+    }
  
     namespace PATCH
 	{

@@ -11,6 +11,7 @@ namespace Hooks
 		void TogglePOVSwitchOff();
 
 		bool SetCamera(RE::PlayerCamera* a_playerCamera, const Camera* a_camSettings);
+		void ReloadLastSave();
 	}
 
     void InstallOnPostLoad();
