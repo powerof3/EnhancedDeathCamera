@@ -6,15 +6,17 @@
 #include "RE/Skyrim.h"
 #include "SKSE/SKSE.h"
 
-#include <SimpleIni.h>
+#include <ClibUtil/simpleINI.hpp>
+#include <ClibUtil/numeric.hpp>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <xbyak/xbyak.h>
 
 #define DLLEXPORT __declspec(dllexport)
 
 namespace logger = SKSE::log;
-namespace string = SKSE::stl::string;
-namespace numeric = SKSE::stl::numeric;
+namespace ini = clib_util::ini;
+namespace string = clib_util::string;
+namespace numeric = clib_util::numeric;
 
 using namespace std::literals;
 

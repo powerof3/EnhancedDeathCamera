@@ -1,29 +1,5 @@
 #pragma once
 
-namespace INI
-{
-	template <class T>
-	static void get_value(CSimpleIniA& a_ini, T& a_value, const char* a_section, const char* a_key, const char* a_comment)
-	{
-		if constexpr (std::is_same_v<T, bool>) {
-			a_value = a_ini.GetBoolValue(a_section, a_key, a_value);
-			a_ini.SetBoolValue(a_section, a_key, a_value, a_comment);
-		} else if constexpr (std::is_floating_point_v<T>) {
-			a_value = static_cast<float>(a_ini.GetDoubleValue(a_section, a_key, a_value));
-			a_ini.SetDoubleValue(a_section, a_key, a_value, a_comment);
-		} else if constexpr (std::is_enum_v<T>) {
-			a_value = string::lexical_cast<T>(a_ini.GetValue(a_section, a_key, std::to_string(stl::to_underlying(a_value)).c_str()));
-			a_ini.SetValue(a_section, a_key, std::to_string(stl::to_underlying(a_value)).c_str(), a_comment);
-		} else if constexpr (std::is_arithmetic_v<T>) {
-			a_value = string::lexical_cast<T>(a_ini.GetValue(a_section, a_key, std::to_string(a_value).c_str()));
-			a_ini.SetValue(a_section, a_key, std::to_string(a_value).c_str(), a_comment);
-		} else {
-			a_value = a_ini.GetValue(a_section, a_key, a_value.c_str());
-			a_ini.SetValue(a_section, a_key, a_value.c_str(), a_comment);
-		}
-	}
-}
-
 class Camera
 {
 public:
