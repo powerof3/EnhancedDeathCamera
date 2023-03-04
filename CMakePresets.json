@@ -46,12 +46,12 @@
     {
       "name": "se",
       "hidden": true,
-      "binaryDir": "${sourceDir}/build/se"
+      "binaryDir": "${sourceDir}/build"
     },
     {
       "name": "ae",
       "hidden": true,
-      "binaryDir": "${sourceDir}/build/ae",
+      "binaryDir": "${sourceDir}/buildae",
       "cacheVariables": {
         "BUILD_SKYRIMAE": true
       }
@@ -82,11 +82,6 @@
       "name": "vs2022-windows-vcpkg-ae",
       "configurePreset": "vs2022-windows-vcpkg-ae",
       "configuration": "Release"
-    },
-    {
-      "name": "vs2022-windows-vcpkg-ae-debug",
-      "configurePreset": "vs2022-windows-vcpkg-ae",
-      "configuration": "Debug"
     },
     {
       "name": "vs2022-windows-vcpkg-se",
