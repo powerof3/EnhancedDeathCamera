@@ -16,11 +16,6 @@ namespace Hooks
 		void ReloadLastSave();
 	}
 
-	namespace RELOAD
-    {
-		void Install();
-    }
-
 	namespace PATCH
 	{
 		void InputWhenKnockedOut();
