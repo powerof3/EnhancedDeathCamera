@@ -90,19 +90,23 @@ namespace Hooks
 			return true;
 		}
 
-        void ReloadLastSave()
+		void ReloadLastSave()
 		{
+			gameReloaded = false;
+
 			const auto camDuration = Settings::GetSingleton()->GetDeathCamera()->camDuration;
 			std::this_thread::sleep_for(std::chrono::seconds(camDuration));
 
-			RE::SubtitleManager::GetSingleton()->KillSubtitles();
-		    if (!RE::BGSSaveLoadManager::GetSingleton()->LoadMostRecentSaveGame()) {
-				RE::Main::GetSingleton()->resetGame = true;
+			if (!gameReloaded) {
+				RE::SubtitleManager::GetSingleton()->KillSubtitles();
+				if (!RE::BGSSaveLoadManager::GetSingleton()->LoadMostRecentSaveGame()) {
+					RE::Main::GetSingleton()->resetGame = true;
+				}
 			}
 		}
-    }
- 
-    namespace PATCH
+	}
+
+	namespace PATCH
 	{
 		void InputWhenKnockedOut()  //nops out "player->IsKnockedOut()", enable input during ragdoll
 		{
@@ -140,8 +144,6 @@ namespace Hooks
 	void InstallOnPostLoad()
 	{
 		const auto settings = Settings::GetSingleton();
-
-		SKSE::AllocTrampoline(72);
 
 		PATCH::InputWhenKnockedOut();
 

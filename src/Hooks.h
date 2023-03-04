@@ -4,7 +4,9 @@ class Camera;
 
 namespace Hooks
 {
-	namespace detail
+	inline bool gameReloaded{ false };
+
+    namespace detail
 	{
 		void SetHudMode(const char* a_mode, bool a_enable);
 		RE::ThirdPersonState* GetThirdPersonState(const RE::PlayerCamera* a_camera);
@@ -12,6 +14,17 @@ namespace Hooks
 
 		bool SetCamera(RE::PlayerCamera* a_playerCamera, const Camera* a_camSettings);
 		void ReloadLastSave();
+	}
+
+	namespace RELOAD
+    {
+		void Install();
+    }
+
+	namespace PATCH
+	{
+		void InputWhenKnockedOut();
+		void DoGetUpAction();
 	}
 
     void InstallOnPostLoad();
