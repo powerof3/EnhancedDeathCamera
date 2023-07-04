@@ -46,7 +46,7 @@ namespace Hooks::BLEEDOUT
 			}
 		}
 		[[maybe_unused]] static inline REL::Relocation<decltype(thunk)> func;
-		static inline size_t index = 0x1;
+		static inline size_t                                            index = 0x1;
 
 	private:
 		static void BeginTPS(RE::ThirdPersonState* a_state)
@@ -69,7 +69,7 @@ namespace Hooks::BLEEDOUT
 			}
 		}
 		[[maybe_unused]] static inline REL::Relocation<decltype(thunk)> func;
-		static inline size_t index = 0x2;
+		static inline size_t                                            index = 0x2;
 
 	private:
 		static void EndTPS(RE::ThirdPersonState* a_state)
@@ -97,7 +97,7 @@ namespace Hooks::BLEEDOUT
 			UpdateTPS(a_state, a_nextState);
 		}
 		[[maybe_unused]] static inline REL::Relocation<decltype(thunk)> func;
-		static inline size_t index = 0x3;
+		static inline size_t                                            index = 0x3;
 
 	private:
 		static void UpdateTPS(RE::ThirdPersonState* a_state, RE::BSTSmartPointer<RE::TESCameraState>& a_nextState)

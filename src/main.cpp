@@ -10,7 +10,7 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
 		Hooks::InstallOnDataLoad();
 		break;
 	case SKSE::MessagingInterface::kPreLoadGame:
-        Hooks::gameReloaded = true;
+		Hooks::gameReloaded = true;
 		break;
 	default:
 		break;

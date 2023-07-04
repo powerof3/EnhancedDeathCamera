@@ -6,8 +6,8 @@
 #include "RE/Skyrim.h"
 #include "SKSE/SKSE.h"
 
-#include <ClibUtil/simpleINI.hpp>
 #include <ClibUtil/numeric.hpp>
+#include <ClibUtil/simpleINI.hpp>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <xbyak/xbyak.h>
 

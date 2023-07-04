@@ -44,7 +44,7 @@ namespace Hooks::RAGDOLL
 			}
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
-		static inline size_t index = 0x07D;
+		static inline size_t                           index = 0x07D;
 
 		static void Install()
 		{

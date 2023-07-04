@@ -22,34 +22,44 @@ void DeathCamera::LoadSettings(CSimpleIniA& a_ini, bool a_writeComments)
 
 void Settings::CheckImprovedCamera()
 {
-#ifdef SKYRIM_AE
-	improvedCamInstalled = GetModuleHandleA("ImprovedCameraAE") != nullptr;
-#else
 	improvedCamInstalled = GetModuleHandleA("ImprovedCameraSE") != nullptr;
-#endif
+
 	if (!improvedCamInstalled) {
+		logger::error("Improved Camera SE is not installed");
+	    return;
+	}
+
+	const auto read_IC_profile = [&](const std::string& a_profileName) {
+		const auto path = fmt::format(R"(Data\SKSE\Plugins\ImprovedCameraSE\Profiles\{})", a_profileName);
+
+		CSimpleIniA ini;
+		ini.SetUnicode();
+
+		if (const auto rc = ini.LoadFile(path.c_str()); rc < 0) {
+			logger::error("couldn't read Improved Camera profile");
+			return;
+		}
+
+		deathCam.improvedCamCompability = static_cast<bool>(ini.GetLongValue("EVENTS", "bDeath", 0));
+		ragdollCam.improvedCamCompability = static_cast<bool>(ini.GetLongValue("EVENTS", "bRagdoll", 0));
+
+		logger::info("Improved Camera - EventDeath {}", deathCam.improvedCamCompability ? "enabled" : "disabled");
+		logger::info("Improved Camera - EventRagdoll {}", ragdollCam.improvedCamCompability ? "enabled" : "disabled");
+	};
+
+	CSimpleIniA improvedCameraSE;
+	improvedCameraSE.SetUnicode();
+
+	if (const auto rc = improvedCameraSE.LoadFile(LR"(Data\SKSE\Plugins\ImprovedCameraSE\ImprovedCameraSE.ini)"); rc < 0) {
+		logger::error("couldn't read Improved Camera SE config");
 		return;
 	}
 
-#ifdef SKYRIM_AE
-	constexpr auto path = L"Data/SKSE/Plugins/ImprovedCameraAE/ImprovedCameraAE.ini";
-#else
-	constexpr auto path = L"Data/SKSE/Plugins/ImprovedCameraSE/ImprovedCameraSE.ini";
-#endif
+    const std::string profileName = improvedCameraSE.GetValue("MODULE DATA", "ProfileName");
 
-	CSimpleIniA ini;
-	ini.SetUnicode();
-
-	if (const auto rc = ini.LoadFile(path); rc < 0) {
-		logger::error("couldn't read Improved Camera INI");
-		return;
+	if (!profileName.empty()) {
+		read_IC_profile(profileName);
 	}
-
-	deathCam.improvedCamCompability = static_cast<bool>(ini.GetLongValue("EVENTS", "bEventDeath", 0));
-	ragdollCam.improvedCamCompability = static_cast<bool>(ini.GetLongValue("EVENTS", "bEventRagdoll", 0));
-
-	logger::info("Improved Camera - EventDeath {}", deathCam.improvedCamCompability ? "enabled" : "disabled");
-	logger::info("Improved Camera - EventRagdoll {}", ragdollCam.improvedCamCompability ? "enabled" : "disabled");
 }
 
 void Settings::CheckSmoothCam()
